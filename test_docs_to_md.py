@@ -22,6 +22,24 @@ class TestApplyInlineTextStyles:
             ({"italic": False}, "Hello world"),
             ({"underline": False}, "Hello world"),
             ({"strikethrough": False}, "Hello world"),
+            (
+                {"backgroundColor": {"color": {"rgbColor": {"red": 1, "green": 1}}}},
+                '<mark style="background-color: rgb(100% 100% 0%)">Hello world</mark>',
+            ),
+            (
+                {
+                    "backgroundColor": {
+                        "color": {
+                            "rgbColor": {
+                                "red": 0.6431373,
+                                "green": 0.7607843,
+                                "blue": 0.95686275,
+                            }
+                        }
+                    }
+                },
+                '<mark style="background-color: rgb(64% 76% 95%)">Hello world</mark>',
+            ),
         ],
     )
     def test_applying_inline_styles(self, text_str, text_styles, expected):

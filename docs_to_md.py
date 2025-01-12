@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import re
 
@@ -13,9 +14,13 @@ def apply_inline_text_styles(content, text_style):
             case "SUBSCRIPT":
                 content = f"<sub>{content.strip('\n')}</sub>"
 
-    # TODO: handle RGB colour styles
     if text_style.get("backgroundColor"):
-        content = f"<mark>{content.strip('\n')}</mark>"
+        # each value is represented as a number from 0.0 to 1.0
+        rgb_color = text_style["backgroundColor"]["color"]["rgbColor"]
+        red = math.floor(rgb_color.get("red", 0) * 100)
+        green = math.floor(rgb_color.get("green", 0) * 100)
+        blue = math.floor(rgb_color.get("blue", 0) * 100)
+        content = f"<mark style=\"background-color: rgb({red}% {green}% {blue}%)\">{content.strip('\n')}</mark>"
     if text_style.get("underline"):
         content = f"<ins>{content.strip('\n')}</ins>"
 
