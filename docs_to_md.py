@@ -48,12 +48,13 @@ def parse_paragraph(element):
         "HEADING_6": "###### ",
     }
     text = ""
-    elements = element["paragraph"]["elements"]
-    paragraph_style = element["paragraph"]["paragraphStyle"]
+    paragraph = element["paragraph"]
+    elements = paragraph["elements"]
+    paragraph_style = paragraph["paragraphStyle"]
     is_heading = paragraph_style["namedStyleType"] in headings
 
-    for element in elements:
-        text_run = element.get("textRun")
+    for item in elements:
+        text_run = item.get("textRun")
         if not text_run:
             continue
 
@@ -71,6 +72,12 @@ def parse_paragraph(element):
         text = headings[paragraph_style["namedStyleType"]] + re.sub(
             r"^\d+(\.\d+)*\s+", "", text
         )
+
+    bullet = paragraph.get("bullet")
+    if bullet:
+        nesting_level = bullet.get("nestingLevel", 0)
+        text = "  " * nesting_level + f"- {text}"
+
     return text
 
 
