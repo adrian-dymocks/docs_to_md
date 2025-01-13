@@ -5,7 +5,10 @@ import re
 
 
 def apply_inline_text_styles(content, text_style):
-    # it is important to make sure any HTML styles are applied first
+    if text_style.get("link", {}).get("url"):
+        content = f"[{content.strip('\n')}]({text_style['link']['url']})"
+
+    # it is important to make sure any HTML styles are applied first (links are fine)
     # before the native markdown, otherwise the rendering will not work properly
     if text_style.get("baselineOffset"):
         match text_style["baselineOffset"]:
@@ -21,6 +24,7 @@ def apply_inline_text_styles(content, text_style):
         green = math.floor(rgb_color.get("green", 0) * 100)
         blue = math.floor(rgb_color.get("blue", 0) * 100)
         content = f"<mark style=\"background-color: rgb({red}% {green}% {blue}%)\">{content.strip('\n')}</mark>"
+
     if text_style.get("underline"):
         content = f"<ins>{content.strip('\n')}</ins>"
 
@@ -31,7 +35,6 @@ def apply_inline_text_styles(content, text_style):
     if text_style.get("strikethrough"):
         content = f"~~{content.strip('\n')}~~"
 
-    # TODO: links
     return content
 
 
