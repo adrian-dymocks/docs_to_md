@@ -38,6 +38,87 @@ def apply_inline_text_styles(content, text_style):
     return content
 
 
+def num_to_char(num, is_uppercase=False):
+    base_char = "A" if is_uppercase else "a"
+    return chr(ord(base_char) + num - 1)
+
+
+def int_to_roman(num, is_uppercase=False):
+    roman_map = [
+        (1000, "m"),
+        (900, "cm"),
+        (500, "d"),
+        (400, "cd"),
+        (100, "c"),
+        (90, "xc"),
+        (50, "l"),
+        (40, "xl"),
+        (10, "x"),
+        (9, "ix"),
+        (5, "v"),
+        (4, "iv"),
+        (1, "i"),
+    ]
+    result = []
+    for arabic, roman in roman_map:
+        (factor, num) = divmod(num, arabic)
+        result.append(roman * factor)
+        if num == 0:
+            break
+    return "".join(result).upper() if is_uppercase else "".join(result)
+
+
+def get_list_prefix(num, glyph_type):
+    match glyph_type:
+        case "UPPER_ALPHA":
+            return num_to_char(num, is_uppercase=True)
+        case "ALPHA":
+            return num_to_char(num)
+        case "UPPER_ROMAN":
+            return int_to_roman(num, is_uppercase=True)
+        case "ROMAN":
+            return int_to_roman(num)
+        case _:
+            # default to decimal prefix
+            return str(num)
+
+
+def parse_bullet(text, bullet, lists, list_stack):
+    list_id = bullet["listId"]
+    list_properties = lists[list_id]["listProperties"]
+
+    nesting_level = bullet.get("nestingLevel", 0)
+    nesting_levels = list_properties["nestingLevels"]
+    level_properties = nesting_levels[nesting_level]
+
+    # glyphType is only present in ordered lists
+    if "glyphType" in level_properties:
+        desired_length = nesting_level + 1
+        if desired_length > len(list_stack):
+            # we need to go deeper
+            while len(list_stack) < desired_length:
+                list_stack.append(1)
+        elif desired_length < len(list_stack):
+            # we need to go shallower
+            while len(list_stack) > desired_length:
+                list_stack.pop()
+            list_stack[-1] += 1
+        else:
+            # same level
+            if not list_stack:
+                list_stack.append(1)
+            else:
+                list_stack[-1] += 1
+        text = (
+            "  " * nesting_level
+            + f"{get_list_prefix(list_stack[-1], level_properties["glyphType"])}. {text}"
+        )
+    else:
+        text = "  " * nesting_level + f"- {text}"
+
+    return text
+
+
 def parse_paragraph(element, lists, list_stack):
     headings = {
         "HEADING_1": "# ",
@@ -76,36 +157,7 @@ def parse_paragraph(element, lists, list_stack):
     # check if the paragraph is a list item
     bullet = paragraph.get("bullet")
     if bullet:
-        list_id = bullet["listId"]
-        list_properties = lists[list_id]["listProperties"]
-
-        nesting_level = bullet.get("nestingLevel", 0)
-        nesting_levels = list_properties["nestingLevels"]
-        level_properties = nesting_levels[nesting_level]
-
-        # glyphType is only present in ordered lists
-        # TODO: deal with different ordered list types (alphabetical, roman)
-        if "glyphType" in level_properties:
-            desired_length = nesting_level + 1
-            if desired_length > len(list_stack):
-                # we need to go deeper
-                while len(list_stack) < desired_length:
-                    list_stack.append(1)
-            elif desired_length < len(list_stack):
-                # we need to go shallower
-                while len(list_stack) > desired_length:
-                    list_stack.pop()
-                list_stack[-1] += 1
-            else:
-                # same level
-                if not list_stack:
-                    list_stack.append(1)
-                else:
-                    list_stack[-1] += 1
-            text = "  " * nesting_level + f"{list_stack[-1]}. {text}"
-        else:
-            text = "  " * nesting_level + f"- {text}"
-
+        text = parse_bullet(text, bullet, lists, list_stack)
     else:
         list_stack.clear()
     return text
