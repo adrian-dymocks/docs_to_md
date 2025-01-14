@@ -2,7 +2,6 @@ import json
 import math
 import os
 import re
-from collections import defaultdict
 
 
 def apply_inline_text_styles(content, text_style):
@@ -39,7 +38,7 @@ def apply_inline_text_styles(content, text_style):
     return content
 
 
-def parse_paragraph(element, lists, ordered_lists_counter):
+def parse_paragraph(element, lists, list_stack):
     headings = {
         "HEADING_1": "# ",
         "HEADING_2": "## ",
@@ -82,19 +81,33 @@ def parse_paragraph(element, lists, ordered_lists_counter):
 
         nesting_level = bullet.get("nestingLevel", 0)
         nesting_levels = list_properties["nestingLevels"]
-        level = nesting_levels[nesting_level]
+        level_properties = nesting_levels[nesting_level]
 
         # glyphType is only present in ordered lists
         # TODO: deal with different ordered list types (alphabetical, roman)
-        if "glyphType" in level:
-            ordered_lists_counter[(list_id, nesting_level)] += 1
-            text = (
-                "  " * nesting_level
-                + f"{ordered_lists_counter[(list_id, nesting_level)]}. {text}"
-            )
+        if "glyphType" in level_properties:
+            desired_length = nesting_level + 1
+            if desired_length > len(list_stack):
+                # we need to go deeper
+                while len(list_stack) < desired_length:
+                    list_stack.append(1)
+            elif desired_length < len(list_stack):
+                # we need to go shallower
+                while len(list_stack) > desired_length:
+                    list_stack.pop()
+                list_stack[-1] += 1
+            else:
+                # same level
+                if not list_stack:
+                    list_stack.append(1)
+                else:
+                    list_stack[-1] += 1
+            text = "  " * nesting_level + f"{list_stack[-1]}. {text}"
         else:
             text = "  " * nesting_level + f"- {text}"
 
+    else:
+        list_stack.clear()
     return text
 
 
@@ -103,17 +116,17 @@ def read_doc_content(data):
     lists = data["lists"]
     body = data["body"]
     content = body["content"]
-    ordered_lists_counter = defaultdict(int)
+    list_stack = []
     for value in content:
         if "paragraph" in value:
-            text += "\n" + parse_paragraph(value, lists, ordered_lists_counter)
+            text += "\n" + parse_paragraph(value, lists, list_stack)
 
     return text
 
 
 def main():
     directory = "inputs/"
-    file = "headings_and_paragraphs_advanced.json"
+    file = "headings_and_paragraphs_advanced2.json"
 
     json_file_path = os.path.join(directory, file)
     # print("Running Parser")
