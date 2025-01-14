@@ -2,6 +2,7 @@ import json
 import math
 import os
 import re
+from collections import defaultdict
 
 
 def apply_inline_text_styles(content, text_style):
@@ -38,7 +39,7 @@ def apply_inline_text_styles(content, text_style):
     return content
 
 
-def parse_paragraph(element):
+def parse_paragraph(element, lists, ordered_lists_counter):
     headings = {
         "HEADING_1": "# ",
         "HEADING_2": "## ",
@@ -73,19 +74,39 @@ def parse_paragraph(element):
             r"^\d+(\.\d+)*\s+", "", text
         )
 
+    # check if the paragraph is a list item
     bullet = paragraph.get("bullet")
     if bullet:
+        list_id = bullet["listId"]
+        list_properties = lists[list_id]["listProperties"]
+
         nesting_level = bullet.get("nestingLevel", 0)
-        text = "  " * nesting_level + f"- {text}"
+        nesting_levels = list_properties["nestingLevels"]
+        level = nesting_levels[nesting_level]
+
+        # glyphType is only present in ordered lists
+        # TODO: deal with different ordered list types (alphabetical, roman)
+        if "glyphType" in level:
+            ordered_lists_counter[(list_id, nesting_level)] += 1
+            text = (
+                "  " * nesting_level
+                + f"{ordered_lists_counter[(list_id, nesting_level)]}. {text}"
+            )
+        else:
+            text = "  " * nesting_level + f"- {text}"
 
     return text
 
 
-def read_doc_content(content):
+def read_doc_content(data):
     text = ""
+    lists = data["lists"]
+    body = data["body"]
+    content = body["content"]
+    ordered_lists_counter = defaultdict(int)
     for value in content:
         if "paragraph" in value:
-            text += "\n" + parse_paragraph(value)
+            text += "\n" + parse_paragraph(value, lists, ordered_lists_counter)
 
     return text
 
@@ -95,14 +116,12 @@ def main():
     file = "headings_and_paragraphs_advanced.json"
 
     json_file_path = os.path.join(directory, file)
-    print("Running Parser")
-    print(json_file_path)
+    # print("Running Parser")
+    # print(json_file_path)
 
     with open(json_file_path, "r") as file:
         data = json.load(file)
-        print(f"Parsing Note: {data['title']}")
-        content = data["body"]["content"]
-        print(read_doc_content(content))
+        print(read_doc_content(data))
 
 
 if __name__ == "__main__":
