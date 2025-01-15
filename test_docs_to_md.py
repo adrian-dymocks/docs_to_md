@@ -12,11 +12,11 @@ class TestApplyInlineTextStyles:
     @pytest.mark.parametrize(
         "text_styles,expected",
         [
-            ({"bold": True}, "**Hello world**"),
-            ({"italic": True}, "*Hello world*"),
+            ({"bold": True}, "<b>Hello world</b>"),
+            ({"italic": True}, "<i>Hello world</i>"),
             ({"underline": True}, "<ins>Hello world</ins>"),
-            ({"strikethrough": True}, "~~Hello world~~"),
-            ({"bold": True, "italic": True}, "***Hello world***"),
+            ({"strikethrough": True}, "<s>Hello world</s>"),
+            ({"bold": True, "italic": True}, "<i><b>Hello world</b></i>"),
             ({}, "Hello world"),
             ({"bold": False}, "Hello world"),
             ({"italic": False}, "Hello world"),
@@ -63,7 +63,7 @@ class TestApplyInlineTextStyles:
                     "bold": True,
                     "backgroundColor": {"color": {"rgbColor": {"red": 1, "green": 1}}},
                 },
-                '**<mark style="background-color: rgb(100% 100% 0%)">Hello world</mark>**',
+                '<b><mark style="background-color: rgb(100% 100% 0%)">Hello world</mark></b>',
             ),
         ],
     )
@@ -75,15 +75,15 @@ class TestApplyInlineTextStyles:
         [
             (
                 {"link": {"url": "https://hello-world.com"}},
-                "[Hello world](https://hello-world.com)",
+                '<a href="https://hello-world.com">Hello world</a>',
             ),
             (
                 {"underline": True, "link": {"url": "https://hello-world.com"}},
-                "<ins>[Hello world](https://hello-world.com)</ins>",
+                '<ins><a href="https://hello-world.com">Hello world</a></ins>',
             ),
             (
                 {"bold": True, "link": {"url": "https://hello-world.com"}},
-                "**[Hello world](https://hello-world.com)**",
+                '<b><a href="https://hello-world.com">Hello world</a></b>',
             ),
         ],
     )
