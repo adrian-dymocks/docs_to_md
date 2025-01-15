@@ -2,14 +2,22 @@ import json
 import math
 import os
 import re
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass
+class ParagraphData:
+    text: str
+    is_list_item: bool
+    list_id: Optional[str]
+    nesting_level: int
 
 
 def apply_inline_text_styles(content, text_style):
     if text_style.get("link", {}).get("url"):
-        content = f"[{content.strip('\n')}]({text_style['link']['url']})"
+        content = f'<a href="{text_style["link"]["url"]}">{content.strip()}</a>'
 
-    # it is important to make sure any HTML styles are applied first (links are fine)
-    # before the native markdown, otherwise the rendering will not work properly
     if text_style.get("baselineOffset"):
         match text_style["baselineOffset"]:
             case "SUPERSCRIPT":
@@ -29,97 +37,16 @@ def apply_inline_text_styles(content, text_style):
         content = f"<ins>{content.strip('\n')}</ins>"
 
     if text_style.get("bold"):
-        content = f"**{content.strip('\n')}**"
+        content = f"<b>{content.strip('\n')}</b>"
     if text_style.get("italic"):
-        content = f"*{content.strip('\n')}*"
+        content = f"<i>{content.strip('\n')}</i>"
     if text_style.get("strikethrough"):
-        content = f"~~{content.strip('\n')}~~"
+        content = f"<s>{content.strip('\n')}</s>"
 
     return content
 
 
-def num_to_char(num, is_uppercase=False):
-    base_char = "A" if is_uppercase else "a"
-    return chr(ord(base_char) + num - 1)
-
-
-def int_to_roman(num, is_uppercase=False):
-    roman_map = [
-        (1000, "m"),
-        (900, "cm"),
-        (500, "d"),
-        (400, "cd"),
-        (100, "c"),
-        (90, "xc"),
-        (50, "l"),
-        (40, "xl"),
-        (10, "x"),
-        (9, "ix"),
-        (5, "v"),
-        (4, "iv"),
-        (1, "i"),
-    ]
-    result = []
-    for arabic, roman in roman_map:
-        (factor, num) = divmod(num, arabic)
-        result.append(roman * factor)
-        if num == 0:
-            break
-    return "".join(result).upper() if is_uppercase else "".join(result)
-
-
-def get_list_prefix(num, glyph_type):
-    match glyph_type:
-        case "UPPER_ALPHA":
-            return num_to_char(num, is_uppercase=True)
-        case "ALPHA":
-            return num_to_char(num)
-        case "UPPER_ROMAN":
-            return int_to_roman(num, is_uppercase=True)
-        case "ROMAN":
-            return int_to_roman(num)
-        case _:
-            # default to decimal prefix
-            return str(num)
-
-
-def parse_bullet(text, bullet, lists, list_stack):
-    list_id = bullet["listId"]
-    list_properties = lists[list_id]["listProperties"]
-
-    nesting_level = bullet.get("nestingLevel", 0)
-    nesting_levels = list_properties["nestingLevels"]
-    level_properties = nesting_levels[nesting_level]
-
-    # glyphType is only present in ordered lists
-    if "glyphType" in level_properties:
-        desired_length = nesting_level + 1
-        if desired_length > len(list_stack):
-            # we need to go deeper
-            while len(list_stack) < desired_length:
-                list_stack.append(1)
-        elif desired_length < len(list_stack):
-            # we need to go shallower
-            while len(list_stack) > desired_length:
-                list_stack.pop()
-            list_stack[-1] += 1
-        else:
-            # same level
-            if not list_stack:
-                list_stack.append(1)
-            else:
-                list_stack[-1] += 1
-        text = (
-            "  " * nesting_level
-            + f"{get_list_prefix(list_stack[-1], level_properties["glyphType"])}. {text}"
-        )
-    else:
-        text = "  " * nesting_level + f"- {text}"
-
-    return text
-
-
-def parse_paragraph(element, lists, list_stack):
+def parse_paragraph(element):
     headings = {
         "HEADING_1": "# ",
         "HEADING_2": "## ",
@@ -128,57 +55,165 @@ def parse_paragraph(element, lists, list_stack):
         "HEADING_5": "##### ",
         "HEADING_6": "###### ",
     }
-    text = ""
     paragraph = element["paragraph"]
-    elements = paragraph["elements"]
     paragraph_style = paragraph["paragraphStyle"]
     is_heading = paragraph_style["namedStyleType"] in headings
 
-    for item in elements:
+    text = ""
+    for item in paragraph["elements"]:
         text_run = item.get("textRun")
-        if not text_run:
-            continue
-
-        content = text_run["content"]
-        text_style = text_run["textStyle"]
-
-        # we do not want to use inline styles for headings
-        if not is_heading:
-            content = apply_inline_text_styles(content, text_style)
-
+        if text_run:
+            content = text_run["content"]
+            text_style = text_run["textStyle"]
+            if not is_heading:
+                content = apply_inline_text_styles(content, text_style)
         text += content
 
     # check if the paragraph has a heading, and remove the number labelling
-    if is_heading:
+    if is_heading and text.strip():
         text = headings[paragraph_style["namedStyleType"]] + re.sub(
             r"^\d+(\.\d+)*\s+", "", text
         )
-
-    # check if the paragraph is a list item
-    bullet = paragraph.get("bullet")
-    if bullet:
-        text = parse_bullet(text, bullet, lists, list_stack)
     else:
-        list_stack.clear()
-    return text
+        match paragraph_style.get("alignment"):
+            case "CENTER":
+                text = f'<p align="center">{text.strip("\n")}</p>'
+            case "END":
+                text = f'<p align="right">{text.strip("\n")}</p>'
+            case "JUSTIFIED":
+                text = f'<p align="justify">{text.strip("\n")}</p>'
+            case "START":
+                text = f'<p align="left">{text.strip("\n")}</p>'
+            case _:
+                text = f'<p>{text.strip("\n")}</p>'
+
+    bullet_info = paragraph.get("bullet")
+    is_list_item = bullet_info is not None
+    list_id = bullet_info["listId"] if is_list_item else None
+    nesting_level = bullet_info.get("nestingLevel", 0) if is_list_item else 0
+
+    return ParagraphData(
+        text=text,
+        is_list_item=is_list_item,
+        list_id=list_id,
+        nesting_level=nesting_level,
+    )
+
+
+def glyph_type_to_css(glyph_type: str) -> str:
+    match glyph_type:
+        case "ALPHA":
+            return "lower-alpha"
+        case "UPPER_ALPHA":
+            return "upper-alpha"
+        case "ROMAN":
+            return "lower-roman"
+        case "UPPER_ROMAN":
+            return "upper-roman"
+        case _:
+            return "decimal"
+
+
+def open_list_tag(list_type: str, style_type: str = "") -> str:
+    """
+    Open a <ul> or <ol> tag.
+    If style_type is given (e.g. 'upper-alpha'), add a style attribute.
+    """
+    if style_type:
+        return f'<{list_type} style="list-style-type: {style_type};">'
+    else:
+        return f"<{list_type}>"
+
+
+def close_list_tag(list_type):
+    return f"</{list_type}>\n"
+
+
+def open_list_item():
+    return "<li>"
+
+
+def close_list_item():
+    return "</li>\n"
 
 
 def read_doc_content(data):
-    text = ""
     lists = data["lists"]
     body = data["body"]
     content = body["content"]
-    list_stack = []
+
+    # Will store references to other node types
+    nodes = []
     for value in content:
         if "paragraph" in value:
-            text += "\n" + parse_paragraph(value, lists, list_stack)
+            p_node = parse_paragraph(value)
+            if p_node.text.strip():
+                nodes.append(p_node)
 
-    return text
+    # We do a second pass to map the nodes to text and also deal with lists
+    output = []
+    list_stack = []
+    # TODO: we will handle logic for tables later, I think it's recursive
+    for node in nodes:
+        if node.is_list_item:
+            list_props = lists[node.list_id]["listProperties"]
+            level_props = list_props["nestingLevels"][node.nesting_level]
+            list_type = "ol" if "glyphType" in level_props else "ul"
+            style_type = (
+                glyph_type_to_css(level_props["glyphType"])
+                if "glyphType" in level_props
+                else ""
+            )
+
+            if len(list_stack) < node.nesting_level + 1:
+                # open new levels
+                while len(list_stack) < node.nesting_level + 1:
+                    list_stack.append({"type": list_type, "level": len(list_stack)})
+                    output.append(open_list_tag(list_type, style_type))
+
+            # If we need to go shallower
+            elif len(list_stack) > node.nesting_level + 1:
+                while len(list_stack) > node.nesting_level + 1:
+                    top = list_stack.pop()
+                    output.append(close_list_tag(top["type"]))
+
+            # If we remain at the same nesting level but changed from ul -> ol or vice versa
+            if list_stack:
+                top_list = list_stack[-1]
+                if top_list["type"] != list_type:
+                    # close old
+                    old = list_stack.pop()
+                    output.append(close_list_tag(old["type"]))
+                    # open new
+                    list_stack.append({"type": list_type, "level": node.nesting_level})
+                    output.append(open_list_tag(list_type, style_type))
+            else:
+                # If stack is empty, open the list
+                list_stack.append({"type": list_type, "level": node.nesting_level})
+                output.append(open_list_tag(list_type, style_type))
+
+            output.append(open_list_item())
+            output.append(node.text.strip())
+            output.append(close_list_item())
+        else:
+            # Not a list item => close all open lists
+            while list_stack:
+                top = list_stack.pop()
+                output.append(close_list_tag(top["type"]))
+
+            # Output the paragraph text as-is
+            output.append(node.text)
+
+    while list_stack:
+        top = list_stack.pop()
+        output.append(close_list_tag(top["type"]))
+
+    return "\n".join(output)
 
 
 def main():
     directory = "inputs/"
-    file = "headings_and_paragraphs_advanced2.json"
+    file = "headings_and_paragraphs_advanced3.json"
 
     json_file_path = os.path.join(directory, file)
     # print("Running Parser")
