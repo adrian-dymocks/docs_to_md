@@ -145,22 +145,10 @@ def close_list_item():
     return "</li>"
 
 
-def read_doc_content(data):
-    lists = data["lists"]
-    body = data["body"]
-    content = body["content"]
-
-    # Will store references to other node types
-    nodes = []
-    for value in content:
-        if "paragraph" in value:
-            p_node = parse_paragraph(value["paragraph"])
-            if p_node.text.strip():
-                nodes.append(p_node)
-
-    # We do a second pass to map the nodes to text and also deal with lists
+def build_html(nodes, lists) -> str:
     output = []
     list_stack = []
+
     # TODO: we will handle logic for tables later, I think it's recursive
     for node in nodes:
         if node.is_list_item:
@@ -219,6 +207,23 @@ def read_doc_content(data):
     return "\n".join(output)
 
 
+def parse_doc_content(data) -> str:
+    body = data["body"]
+    content = body["content"]
+
+    # Will store references to other node types
+    nodes = []
+    for value in content:
+        if "paragraph" in value:
+            p_node = parse_paragraph(value["paragraph"])
+            if p_node.text.strip():
+                nodes.append(p_node)
+
+    # Post-process to deal with lists and build the HTML text string
+    lists = data["lists"]
+    return build_html(nodes, lists)
+
+
 def main():
     directory = "inputs/"
     file = "headings_and_paragraphs_advanced3.json"
@@ -229,7 +234,7 @@ def main():
 
     with open(json_file_path, "r") as file:
         data = json.load(file)
-        print(read_doc_content(data))
+        print(parse_doc_content(data))
 
 
 if __name__ == "__main__":
