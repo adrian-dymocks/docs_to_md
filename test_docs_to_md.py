@@ -96,23 +96,6 @@ class TestApplyInlineTextStyles:
         assert apply_inline_text_styles(text_str, text_styles) == expected
 
 
-"""
-TESTS:
-- test parse_paragraph
-    - empty text case
-    - test headings/removing labelling if it exists
-    - test paragraph alignment
-    - test if is bullet
-    - test if nested bullet
-- read_doc_content (this will probably be an integration test)
-    - test basic multiple paragraphs
-    - test bullet points ul
-    - test ul nesting
-    - test ol
-    - test ol nesting
-"""
-
-
 class TestParseParagraph:
     @pytest.fixture
     def paragraph_element(self):
