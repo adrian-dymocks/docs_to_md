@@ -16,7 +16,7 @@ class ParagraphData:
 
 def apply_inline_text_styles(content, text_style):
     if text_style.get("link", {}).get("url"):
-        content = f'<a href="{text_style["link"]["url"]}">{content.strip()}</a>'
+        content = f'<a href="{text_style["link"]["url"]}">{content.strip("\n")}</a>'
 
     if text_style.get("baselineOffset"):
         match text_style["baselineOffset"]:
@@ -46,7 +46,7 @@ def apply_inline_text_styles(content, text_style):
     return content
 
 
-def parse_paragraph(element):
+def parse_paragraph(paragraph) -> ParagraphData:
     headings = {
         "HEADING_1": "# ",
         "HEADING_2": "## ",
@@ -55,7 +55,6 @@ def parse_paragraph(element):
         "HEADING_5": "##### ",
         "HEADING_6": "###### ",
     }
-    paragraph = element["paragraph"]
     paragraph_style = paragraph["paragraphStyle"]
     is_heading = paragraph_style["namedStyleType"] in headings
 
@@ -69,8 +68,17 @@ def parse_paragraph(element):
                 content = apply_inline_text_styles(content, text_style)
         text += content
 
-    # check if the paragraph has a heading, and remove the number labelling
-    if is_heading and text.strip():
+    # no point in having empty tags, will make the doc messier
+    if not text.strip():
+        return ParagraphData(
+            text="",
+            is_list_item=False,
+            list_id=None,
+            nesting_level=0,
+        )
+
+    # check if the paragraph has a heading, and remove the number labelling if it exists
+    if is_heading:
         text = headings[paragraph_style["namedStyleType"]] + re.sub(
             r"^\d+(\.\d+)*\s+", "", text
         )
@@ -126,7 +134,7 @@ def open_list_tag(list_type: str, style_type: str = "") -> str:
 
 
 def close_list_tag(list_type):
-    return f"</{list_type}>\n"
+    return f"</{list_type}>"
 
 
 def open_list_item():
@@ -134,7 +142,7 @@ def open_list_item():
 
 
 def close_list_item():
-    return "</li>\n"
+    return "</li>"
 
 
 def read_doc_content(data):
@@ -146,7 +154,7 @@ def read_doc_content(data):
     nodes = []
     for value in content:
         if "paragraph" in value:
-            p_node = parse_paragraph(value)
+            p_node = parse_paragraph(value["paragraph"])
             if p_node.text.strip():
                 nodes.append(p_node)
 
