@@ -14,6 +14,21 @@ class ParagraphData:
     nesting_level: int
 
 
+@dataclass
+class TableCellData:
+    nodes: list[ParagraphData]
+
+
+@dataclass
+class TableRowData:
+    cells: list[TableCellData]
+
+
+@dataclass
+class TableData:
+    rows: list[TableRowData]
+
+
 def apply_inline_text_styles(content, text_style):
     if text_style.get("link", {}).get("url"):
         content = f'<a href="{text_style["link"]["url"]}">{content.strip("\n")}</a>'
@@ -66,7 +81,7 @@ def parse_paragraph(paragraph) -> ParagraphData:
             text_style = text_run["textStyle"]
             if not is_heading:
                 content = apply_inline_text_styles(content, text_style)
-        text += content
+            text += content
 
     # no point in having empty tags, will make the doc messier
     if not text.strip():
@@ -80,7 +95,7 @@ def parse_paragraph(paragraph) -> ParagraphData:
     # check if the paragraph has a heading, and remove the number labelling if it exists
     if is_heading:
         text = headings[paragraph_style["namedStyleType"]] + re.sub(
-            r"^\d+(\.\d+)*\s+", "", text
+            r"^\d+(\.\d+)*\.*\s+", "", text
         )
     else:
         match paragraph_style.get("alignment"):
@@ -145,12 +160,34 @@ def close_list_item():
     return "</li>"
 
 
-def build_html(nodes, lists) -> str:
+def generate_table_html(table_data: TableData, lists) -> str:
+    output = []
+    output.append("<table>")
+    for idx, row in enumerate(table_data.rows):
+        output.append("<tr>")
+        for cell in row.cells:
+            output.append("<th>" if idx == 0 else "<td>")
+            output.append(generate_html(cell.nodes, lists))
+            output.append("</th>" if idx == 0 else "</td>")
+        output.append("</tr>")
+    output.append("</table>")
+    return "\n".join(output)
+
+
+def generate_html(nodes, lists) -> str:
     output = []
     list_stack = []
 
-    # TODO: we will handle logic for tables later, I think it's recursive
     for node in nodes:
+        if isinstance(node, TableData):
+            # close out any lists
+            while list_stack:
+                top = list_stack.pop()
+                output.append(close_list_tag(top["type"]))
+            output.append(generate_table_html(node, lists))
+            continue
+
+        # the node is a paragraph node
         if node.is_list_item:
             list_props = lists[node.list_id]["listProperties"]
             level_props = list_props["nestingLevels"][node.nesting_level]
@@ -197,7 +234,6 @@ def build_html(nodes, lists) -> str:
                 top = list_stack.pop()
                 output.append(close_list_tag(top["type"]))
 
-            # Output the paragraph text as-is
             output.append(node.text)
 
     while list_stack:
@@ -207,26 +243,53 @@ def build_html(nodes, lists) -> str:
     return "\n".join(output)
 
 
-def parse_doc_content(data) -> str:
-    body = data["body"]
-    content = body["content"]
+def parse_table_cell(cell_elem) -> TableCellData:
+    nodes = parse_content(cell_elem)
+    return TableCellData(nodes=nodes)
 
-    # Will store references to other node types
+
+def parse_table(table_elem) -> TableData:
+    # TODO: Handle advanced table formatting like shared rows/cols, also handle the blockquote thing
+    rows = []
+    for table_row in table_elem["tableRows"]:
+        cells = []
+        for table_cell in table_row["tableCells"]:
+            cells.append(parse_table_cell(table_cell))
+        rows.append(TableRowData(cells=cells))
+    return TableData(rows=rows)
+
+
+def parse_content(body):
+    content = body["content"]
     nodes = []
     for value in content:
         if "paragraph" in value:
             p_node = parse_paragraph(value["paragraph"])
             if p_node.text.strip():
                 nodes.append(p_node)
+        if "table" in value:
+            table_node = parse_table(value["table"])
+            nodes.append(table_node)
+            # parse tables
+            pass
+    return nodes
+
+
+def parse_doc_body(data) -> str:
+    body = data["body"]
+    content = body["content"]
+
+    # Will store references to other node types
+    nodes = parse_content(body)
 
     # Post-process to deal with lists and build the HTML text string
     lists = data["lists"]
-    return build_html(nodes, lists)
+    return generate_html(nodes, lists)
 
 
 def main():
     directory = "inputs/"
-    file = "headings_and_paragraphs_advanced3.json"
+    file = "headings_and_paragraphs_tables.json"
 
     json_file_path = os.path.join(directory, file)
     # print("Running Parser")
@@ -234,7 +297,7 @@ def main():
 
     with open(json_file_path, "r") as file:
         data = json.load(file)
-        print(parse_doc_content(data))
+        print(parse_doc_body(data))
 
 
 if __name__ == "__main__":
