@@ -17,6 +17,8 @@ class ParagraphData:
 @dataclass
 class TableCellData:
     nodes: list[ParagraphData]
+    col_span: int = 1
+    row_span: int = 1
 
 
 @dataclass
@@ -166,8 +168,17 @@ def generate_table_html(table_data: TableData, lists) -> str:
     for idx, row in enumerate(table_data.rows):
         output.append("<tr>")
         for cell in row.cells:
-            output.append("<th>" if idx == 0 else "<td>")
-            output.append(generate_html(cell.nodes, lists))
+            cell_html = generate_html(cell.nodes, lists)
+
+            attrs = []
+            if cell.row_span > 1:
+                attrs.append(f'rowspan="{cell.row_span}"')
+            if cell.col_span > 1:
+                attrs.append(f'colspan="{cell.col_span}"')
+            attr_str = " " + " ".join(attrs) if attrs else ""
+
+            output.append(f"<th{attr_str}>" if idx == 0 else f"<td{attr_str}>")
+            output.append(cell_html)
             output.append("</th>" if idx == 0 else "</td>")
         output.append("</tr>")
     output.append("</table>")
@@ -243,9 +254,12 @@ def generate_html(nodes, lists) -> str:
     return "\n".join(output)
 
 
-def parse_table_cell(cell_elem) -> TableCellData:
-    nodes = parse_content(cell_elem)
-    return TableCellData(nodes=nodes)
+def parse_table_cell(table_cell) -> TableCellData:
+    nodes = parse_content(table_cell)
+    cell_style = table_cell.get("tableCellStyle", {})
+    row_span = cell_style.get("rowSpan", 1)
+    col_span = cell_style.get("colSpan", 1)
+    return TableCellData(nodes=nodes, row_span=row_span, col_span=col_span)
 
 
 def parse_table(table_elem) -> TableData:
@@ -254,7 +268,9 @@ def parse_table(table_elem) -> TableData:
     for table_row in table_elem["tableRows"]:
         cells = []
         for table_cell in table_row["tableCells"]:
-            cells.append(parse_table_cell(table_cell))
+            cell_node = parse_table_cell(table_cell)
+            if cell_node.nodes:
+                cells.append(cell_node)
         rows.append(TableRowData(cells=cells))
     return TableData(rows=rows)
 
@@ -277,7 +293,6 @@ def parse_content(body):
 
 def parse_doc_body(data) -> str:
     body = data["body"]
-    content = body["content"]
 
     # Will store references to other node types
     nodes = parse_content(body)
@@ -289,7 +304,8 @@ def parse_doc_body(data) -> str:
 
 def main():
     directory = "inputs/"
-    file = "headings_and_paragraphs_tables.json"
+    # file = "headings_and_paragraphs_tables.json"
+    file = "12b_notes_no_questions.json"
 
     json_file_path = os.path.join(directory, file)
     # print("Running Parser")
