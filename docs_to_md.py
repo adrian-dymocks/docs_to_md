@@ -1,5 +1,4 @@
 import json
-import math
 import os
 import re
 from dataclasses import dataclass
@@ -32,33 +31,36 @@ class TableNode:
 
 
 def apply_inline_text_styles(content, text_style):
+    content = content.strip("\n")
+
     if text_style.get("link", {}).get("url"):
-        content = f'<a href="{text_style["link"]["url"]}">{content.strip("\n")}</a>'
+        content = f'<a href="{text_style["link"]["url"]}">{content}</a>'
 
     if text_style.get("baselineOffset"):
         match text_style["baselineOffset"]:
             case "SUPERSCRIPT":
-                content = f"<sup>{content.strip('\n')}</sup>"
+                content = f"<sup>{content}</sup>"
             case "SUBSCRIPT":
-                content = f"<sub>{content.strip('\n')}</sub>"
+                content = f"<sub>{content}</sub>"
 
     if text_style.get("backgroundColor"):
-        # each value is represented as a number from 0.0 to 1.0
         rgb_color = text_style["backgroundColor"]["color"]["rgbColor"]
-        red = math.floor(rgb_color.get("red", 0) * 100)
-        green = math.floor(rgb_color.get("green", 0) * 100)
-        blue = math.floor(rgb_color.get("blue", 0) * 100)
-        content = f"<mark style=\"background-color: rgb({red}% {green}% {blue}%)\">{content.strip('\n')}</mark>"
+        content = (
+            f'<mark style="background-color: rgb('
+            f'{int(rgb_color.get("red", 0) * 100)}% '
+            f'{int(rgb_color.get("green", 0) * 100)}% '
+            f'{int(rgb_color.get("blue", 0) * 100)}%)">'
+            f"{content}</mark>"
+        )
 
     if text_style.get("underline"):
-        content = f"<ins>{content.strip('\n')}</ins>"
-
+        content = f"<ins>{content}</ins>"
     if text_style.get("bold"):
-        content = f"<b>{content.strip('\n')}</b>"
+        content = f"<b>{content}</b>"
     if text_style.get("italic"):
-        content = f"<i>{content.strip('\n')}</i>"
+        content = f"<i>{content}</i>"
     if text_style.get("strikethrough"):
-        content = f"<s>{content.strip('\n')}</s>"
+        content = f"<s>{content}</s>"
 
     return content
 
@@ -114,14 +116,11 @@ def parse_paragraph(paragraph) -> ParagraphNode:
 
     bullet_info = paragraph.get("bullet")
     is_list_item = bullet_info is not None
-    list_id = bullet_info["listId"] if is_list_item else None
-    nesting_level = bullet_info.get("nestingLevel", 0) if is_list_item else 0
-
     return ParagraphNode(
         text=text,
         is_list_item=is_list_item,
-        list_id=list_id,
-        nesting_level=nesting_level,
+        list_id=bullet_info["listId"] if is_list_item else None,
+        nesting_level=bullet_info.get("nestingLevel", 0) if is_list_item else 0,
     )
 
 
@@ -263,9 +262,11 @@ def generate_html(nodes, lists) -> str:
 def parse_table_cell(table_cell) -> TableCellNode:
     nodes = parse_content(table_cell)
     cell_style = table_cell.get("tableCellStyle", {})
-    row_span = cell_style.get("rowSpan", 1)
-    col_span = cell_style.get("colSpan", 1)
-    return TableCellNode(nodes=nodes, row_span=row_span, col_span=col_span)
+    return TableCellNode(
+        nodes=nodes,
+        row_span=cell_style.get("rowSpan", 1),
+        col_span=cell_style.get("colSpan", 1),
+    )
 
 
 def parse_table(table_elem) -> TableNode:
@@ -282,28 +283,19 @@ def parse_table(table_elem) -> TableNode:
 
 
 def parse_content(body):
-    content = body["content"]
     nodes = []
-    for value in content:
+    for value in body["content"]:
         if "paragraph" in value:
             paragraph_node = parse_paragraph(value["paragraph"])
             if paragraph_node.text.strip():
                 nodes.append(paragraph_node)
         if "table" in value:
-            table_node = parse_table(value["table"])
-            nodes.append(table_node)
+            nodes.append(parse_table(value["table"]))
     return nodes
 
 
 def parse_doc_body(data) -> str:
-    body = data["body"]
-
-    # Will store references to other node types
-    nodes = parse_content(body)
-
-    # Post-process to deal with lists and build the HTML text string
-    lists = data["lists"]
-    return generate_html(nodes, lists)
+    return generate_html(parse_content(data["body"]), data["lists"])
 
 
 def main():
