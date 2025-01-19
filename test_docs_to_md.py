@@ -1,9 +1,9 @@
 import pytest
 
 from docs_to_md import (
-    ParagraphData,
+    ParagraphNode,
     apply_inline_text_styles,
-    build_html,
+    generate_html,
     parse_paragraph,
 )
 
@@ -108,7 +108,7 @@ class TestParseParagraph:
         }
 
     def test_parse_basic_paragraph(self, paragraph_element):
-        assert parse_paragraph(paragraph_element) == ParagraphData(
+        assert parse_paragraph(paragraph_element) == ParagraphNode(
             text="<p>Hello World.</p>",
             is_list_item=False,
             list_id=None,
@@ -145,7 +145,7 @@ class TestParseParagraph:
         ],
     )
     def test_parse_whitespace_only_text(self, elem):
-        assert parse_paragraph(elem) == ParagraphData(
+        assert parse_paragraph(elem) == ParagraphNode(
             text="", is_list_item=False, list_id=None, nesting_level=0
         )
 
@@ -157,7 +157,7 @@ class TestParseParagraph:
             ],
         }
 
-        assert parse_paragraph(elem) == ParagraphData(
+        assert parse_paragraph(elem) == ParagraphNode(
             text="# Hello World.",
             is_list_item=False,
             list_id=None,
@@ -172,7 +172,7 @@ class TestParseParagraph:
             ],
         }
 
-        assert parse_paragraph(elem) == ParagraphData(
+        assert parse_paragraph(elem) == ParagraphNode(
             text="# Hello World.",
             is_list_item=False,
             list_id=None,
@@ -191,7 +191,7 @@ class TestParseParagraph:
             ],
         }
 
-        assert parse_paragraph(elem) == ParagraphData(
+        assert parse_paragraph(elem) == ParagraphNode(
             text='<p align="justify">Hello World.</p>',
             is_list_item=False,
             list_id=None,
@@ -210,7 +210,7 @@ class TestParseParagraph:
             "bullet": {"listId": "1", "nestingLevel": 0},
         }
 
-        assert parse_paragraph(elem) == ParagraphData(
+        assert parse_paragraph(elem) == ParagraphNode(
             text="<p>Hello World.</p>",
             is_list_item=True,
             list_id="1",
@@ -229,7 +229,7 @@ class TestParseParagraph:
             "bullet": {"listId": "1", "nestingLevel": 1},
         }
 
-        assert parse_paragraph(elem) == ParagraphData(
+        assert parse_paragraph(elem) == ParagraphNode(
             text="<p>Hello World.</p>",
             is_list_item=True,
             list_id="1",
@@ -256,13 +256,13 @@ class TestBuildHTML:
 
     def test_basic_nodes(self, lists):
         nodes = [
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=False,
                 list_id=None,
                 nesting_level=0,
             ),
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=False,
                 list_id=None,
@@ -270,20 +270,20 @@ class TestBuildHTML:
             ),
         ]
         assert (
-            build_html(nodes, lists)
+            generate_html(nodes, lists)
             == """<p>Hello World.</p>
 <p>Hello World.</p>"""
         )
 
     def test_basic_unordered_lists(self, lists):
         nodes = [
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=True,
                 list_id="1",
                 nesting_level=0,
             ),
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=True,
                 list_id="1",
@@ -291,7 +291,7 @@ class TestBuildHTML:
             ),
         ]
         assert (
-            build_html(nodes, lists)
+            generate_html(nodes, lists)
             == """<ul>
 <li>
 <p>Hello World.</p>
@@ -304,25 +304,25 @@ class TestBuildHTML:
 
     def test_nested_unordered_lists(self, lists):
         nodes = [
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=True,
                 list_id="1",
                 nesting_level=0,
             ),
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=True,
                 list_id="1",
                 nesting_level=1,
             ),
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=True,
                 list_id="1",
                 nesting_level=2,
             ),
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=True,
                 list_id="1",
@@ -330,7 +330,7 @@ class TestBuildHTML:
             ),
         ]
         assert (
-            build_html(nodes, lists)
+            generate_html(nodes, lists)
             == """<ul>
 <li>
 <p>Hello World.</p>
@@ -353,13 +353,13 @@ class TestBuildHTML:
 
     def test_basic_ordered_lists(self, lists):
         nodes = [
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=True,
                 list_id="2",
                 nesting_level=0,
             ),
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=True,
                 list_id="2",
@@ -367,7 +367,7 @@ class TestBuildHTML:
             ),
         ]
         assert (
-            build_html(nodes, lists)
+            generate_html(nodes, lists)
             == """<ol style="list-style-type: decimal;">
 <li>
 <p>Hello World.</p>
@@ -380,25 +380,25 @@ class TestBuildHTML:
 
     def test_nested_ordered_lists(self, lists):
         nodes = [
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=True,
                 list_id="2",
                 nesting_level=0,
             ),
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=True,
                 list_id="2",
                 nesting_level=1,
             ),
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=True,
                 list_id="2",
                 nesting_level=2,
             ),
-            ParagraphData(
+            ParagraphNode(
                 text="<p>Hello World.</p>",
                 is_list_item=True,
                 list_id="2",
@@ -406,7 +406,7 @@ class TestBuildHTML:
             ),
         ]
         assert (
-            build_html(nodes, lists)
+            generate_html(nodes, lists)
             == """<ol style="list-style-type: decimal;">
 <li>
 <p>Hello World.</p>

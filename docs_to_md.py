@@ -7,7 +7,7 @@ from typing import Optional
 
 
 @dataclass
-class ParagraphData:
+class ParagraphNode:
     text: str
     is_list_item: bool
     list_id: Optional[str]
@@ -15,20 +15,20 @@ class ParagraphData:
 
 
 @dataclass
-class TableCellData:
-    nodes: list[ParagraphData]
+class TableCellNode:
+    nodes: list[ParagraphNode]
     col_span: int = 1
     row_span: int = 1
 
 
 @dataclass
-class TableRowData:
-    cells: list[TableCellData]
+class TableRowNode:
+    cells: list[TableCellNode]
 
 
 @dataclass
-class TableData:
-    rows: list[TableRowData]
+class TableNode:
+    rows: list[TableRowNode]
 
 
 def apply_inline_text_styles(content, text_style):
@@ -63,7 +63,7 @@ def apply_inline_text_styles(content, text_style):
     return content
 
 
-def parse_paragraph(paragraph) -> ParagraphData:
+def parse_paragraph(paragraph) -> ParagraphNode:
     headings = {
         "HEADING_1": "# ",
         "HEADING_2": "## ",
@@ -87,7 +87,7 @@ def parse_paragraph(paragraph) -> ParagraphData:
 
     # no point in having empty tags, will make the doc messier
     if not text.strip():
-        return ParagraphData(
+        return ParagraphNode(
             text="",
             is_list_item=False,
             list_id=None,
@@ -117,7 +117,7 @@ def parse_paragraph(paragraph) -> ParagraphData:
     list_id = bullet_info["listId"] if is_list_item else None
     nesting_level = bullet_info.get("nestingLevel", 0) if is_list_item else 0
 
-    return ParagraphData(
+    return ParagraphNode(
         text=text,
         is_list_item=is_list_item,
         list_id=list_id,
@@ -162,7 +162,7 @@ def close_list_item():
     return "</li>"
 
 
-def generate_table_html(table_data: TableData, lists) -> str:
+def generate_table_html(table_data: TableNode, lists) -> str:
     output = []
     output.append("<table>")
     for idx, row in enumerate(table_data.rows):
@@ -185,12 +185,56 @@ def generate_table_html(table_data: TableData, lists) -> str:
     return "\n".join(output)
 
 
+def generate_list_html(node, lists, list_stack) -> str:
+    output = []
+    list_props = lists[node.list_id]["listProperties"]
+    level_props = list_props["nestingLevels"][node.nesting_level]
+    list_type = "ol" if "glyphType" in level_props else "ul"
+    style_type = (
+        glyph_type_to_css(level_props["glyphType"])
+        if "glyphType" in level_props
+        else ""
+    )
+
+    if len(list_stack) < node.nesting_level + 1:
+        # open new levels
+        while len(list_stack) < node.nesting_level + 1:
+            list_stack.append({"type": list_type, "level": len(list_stack)})
+            output.append(open_list_tag(list_type, style_type))
+
+    # If we need to go shallower
+    elif len(list_stack) > node.nesting_level + 1:
+        while len(list_stack) > node.nesting_level + 1:
+            top = list_stack.pop()
+            output.append(close_list_tag(top["type"]))
+
+    # If we remain at the same nesting level but changed from ul -> ol or vice versa
+    if list_stack:
+        top_list = list_stack[-1]
+        if top_list["type"] != list_type:
+            # close old
+            old = list_stack.pop()
+            output.append(close_list_tag(old["type"]))
+            # open new
+            list_stack.append({"type": list_type, "level": node.nesting_level})
+            output.append(open_list_tag(list_type, style_type))
+    else:
+        # If stack is empty, open the list
+        list_stack.append({"type": list_type, "level": node.nesting_level})
+        output.append(open_list_tag(list_type, style_type))
+
+    output.append(open_list_item())
+    output.append(node.text.strip())
+    output.append(close_list_item())
+    return "\n".join(output)
+
+
 def generate_html(nodes, lists) -> str:
     output = []
     list_stack = []
 
     for node in nodes:
-        if isinstance(node, TableData):
+        if isinstance(node, TableNode):
             # close out any lists
             while list_stack:
                 top = list_stack.pop()
@@ -200,53 +244,15 @@ def generate_html(nodes, lists) -> str:
 
         # the node is a paragraph node
         if node.is_list_item:
-            list_props = lists[node.list_id]["listProperties"]
-            level_props = list_props["nestingLevels"][node.nesting_level]
-            list_type = "ol" if "glyphType" in level_props else "ul"
-            style_type = (
-                glyph_type_to_css(level_props["glyphType"])
-                if "glyphType" in level_props
-                else ""
-            )
-
-            if len(list_stack) < node.nesting_level + 1:
-                # open new levels
-                while len(list_stack) < node.nesting_level + 1:
-                    list_stack.append({"type": list_type, "level": len(list_stack)})
-                    output.append(open_list_tag(list_type, style_type))
-
-            # If we need to go shallower
-            elif len(list_stack) > node.nesting_level + 1:
-                while len(list_stack) > node.nesting_level + 1:
-                    top = list_stack.pop()
-                    output.append(close_list_tag(top["type"]))
-
-            # If we remain at the same nesting level but changed from ul -> ol or vice versa
-            if list_stack:
-                top_list = list_stack[-1]
-                if top_list["type"] != list_type:
-                    # close old
-                    old = list_stack.pop()
-                    output.append(close_list_tag(old["type"]))
-                    # open new
-                    list_stack.append({"type": list_type, "level": node.nesting_level})
-                    output.append(open_list_tag(list_type, style_type))
-            else:
-                # If stack is empty, open the list
-                list_stack.append({"type": list_type, "level": node.nesting_level})
-                output.append(open_list_tag(list_type, style_type))
-
-            output.append(open_list_item())
-            output.append(node.text.strip())
-            output.append(close_list_item())
+            output.append(generate_list_html(node, lists, list_stack))
         else:
             # Not a list item => close all open lists
             while list_stack:
                 top = list_stack.pop()
                 output.append(close_list_tag(top["type"]))
-
             output.append(node.text)
 
+    # make sure that any lists that are still open are closed
     while list_stack:
         top = list_stack.pop()
         output.append(close_list_tag(top["type"]))
@@ -254,16 +260,16 @@ def generate_html(nodes, lists) -> str:
     return "\n".join(output)
 
 
-def parse_table_cell(table_cell) -> TableCellData:
+def parse_table_cell(table_cell) -> TableCellNode:
     nodes = parse_content(table_cell)
     cell_style = table_cell.get("tableCellStyle", {})
     row_span = cell_style.get("rowSpan", 1)
     col_span = cell_style.get("colSpan", 1)
-    return TableCellData(nodes=nodes, row_span=row_span, col_span=col_span)
+    return TableCellNode(nodes=nodes, row_span=row_span, col_span=col_span)
 
 
-def parse_table(table_elem) -> TableData:
-    # TODO: Handle advanced table formatting like shared rows/cols, also handle the blockquote thing
+def parse_table(table_elem) -> TableNode:
+    # TODO: handle the blockquote thing
     rows = []
     for table_row in table_elem["tableRows"]:
         cells = []
@@ -271,8 +277,8 @@ def parse_table(table_elem) -> TableData:
             cell_node = parse_table_cell(table_cell)
             if cell_node.nodes:
                 cells.append(cell_node)
-        rows.append(TableRowData(cells=cells))
-    return TableData(rows=rows)
+        rows.append(TableRowNode(cells=cells))
+    return TableNode(rows=rows)
 
 
 def parse_content(body):
@@ -280,14 +286,12 @@ def parse_content(body):
     nodes = []
     for value in content:
         if "paragraph" in value:
-            p_node = parse_paragraph(value["paragraph"])
-            if p_node.text.strip():
-                nodes.append(p_node)
+            paragraph_node = parse_paragraph(value["paragraph"])
+            if paragraph_node.text.strip():
+                nodes.append(paragraph_node)
         if "table" in value:
             table_node = parse_table(value["table"])
             nodes.append(table_node)
-            # parse tables
-            pass
     return nodes
 
 
